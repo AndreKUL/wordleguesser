@@ -202,6 +202,47 @@
             75%  { opacity: 0.95; transform: rotate(-0.6deg); }
             100% { opacity: 0.93; transform: rotate(-0.5deg); }
             }
+        
+        #board {
+            margin-top: 50px;
+            font-size: 2rem;
+            letter-spacing: 0.2em;
+        }
+
+        #keyboard {
+            margin-top: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .kb-row {
+            display: flex;
+            justify-content: center;
+            gap: 4px;
+        }
+
+        .key {
+            background: #818384;
+            border: none;
+            border-radius: 4px;
+            padding: 14px 0;      /* slightly taller than board cells */
+            color: white;
+            font-weight: bold;
+            font-size: 1.2rem;    /* slightly bigger than board letters */
+            cursor: pointer;
+            text-transform: uppercase;
+            flex: 1;               /* distribute evenly */
+            max-width: 50px;       /* keeps them from stretching too wide */
+        }
+
+        .wide {
+            flex: 1.5;             /* Enter/Del slightly wider */
+            max-width: 80px;
+        }
+
 
     </style>
 </head>
@@ -228,8 +269,45 @@
             <p id="best-guess">Best guess: soare</p>
             <p id="info-guess">Most info guess: ↑</p>
         </div>
-        
     </div>
+
+    <div id="board"></div>
+        <div id="keyboard">
+            <div class="kb-row">
+            <button class="key">q</button>
+            <button class="key">w</button>
+            <button class="key">e</button>
+            <button class="key">r</button>
+            <button class="key">t</button>
+            <button class="key">y</button>
+            <button class="key">u</button>
+            <button class="key">i</button>
+            <button class="key">o</button>
+            <button class="key">p</button>
+            </div>
+            <div class="kb-row">
+            <button class="key">a</button>
+            <button class="key">s</button>
+            <button class="key">d</button>
+            <button class="key">f</button>
+            <button class="key">g</button>
+            <button class="key">h</button>
+            <button class="key">j</button>
+            <button class="key">k</button>
+            <button class="key">l</button>
+            </div>
+            <div class="kb-row">
+            <button class="key wide">Enter</button>
+            <button class="key">z</button>
+            <button class="key">x</button>
+            <button class="key">c</button>
+            <button class="key">v</button>
+            <button class="key">b</button>
+            <button class="key">n</button>
+            <button class="key">m</button>
+            <button class="key wide">Del</button>
+            </div>
+        </div>
     <div id="chart-container">
         <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
 
@@ -407,107 +485,91 @@
 
 
     // Typing letters directly into cells
-    document.addEventListener("keydown", (e) => {
-        if (document.getElementById(`row-${currentRow}`).classList.contains("locked")) {
-            return;
+    // Function to handle any key input (letter, Enter, Del)
+function handleKey(key) {
+    const uppercaseKey = key.toUpperCase();
+    
+    if (document.getElementById(`row-${currentRow}`).classList.contains("locked")) return;
+    if (currentRow === maxRows) gameOver = true;
+    if (gameOver) return;
+
+    // Letters A-Z
+    if (uppercaseKey.length === 1 && uppercaseKey >= "A" && uppercaseKey <= "Z") {
+        if (currentCol < maxCols) {
+            const cell = document.getElementById(`cell-${currentRow}-${currentCol}`);
+            cell.textContent = uppercaseKey;
+            currentCol++;
         }
-        if (currentRow === maxRows) {
-                gameOver = true
-            }
-        if (gameOver) return;
-        const key = e.key.toUpperCase();
+    }
 
-        // Letters A-Z
-        if (key.length === 1 && key >= "A" && key <= "Z") {
-            if (currentCol < maxCols) {
-                const cell = document.getElementById(`cell-${currentRow}-${currentCol}`);
-                cell.textContent = key;
-                currentCol++;
-            }
+    // Backspace/Delete
+    if (uppercaseKey === "DEL") {
+        if (currentCol > 0) {
+            currentCol--;
+            const cell = document.getElementById(`cell-${currentRow}-${currentCol}`);
+            cell.textContent = "";
         }
+    }
 
-        // Backspace
-        if (e.key === "Backspace") {
-            if (currentCol > 0) {
-                currentCol--;
-                const cell = document.getElementById(`cell-${currentRow}-${currentCol}`);
-                cell.textContent = "";
-            }
+    // Enter
+    if (uppercaseKey === "ENTER") {
+        const word = getRowWord(currentRow).toLowerCase();
+        const feedback = getRowFeedback(currentRow);
+        if (feedback.reduce((sum, a) => sum + a, 0) === 0) {
+            celebrate();
+            gameOver = true;
         }
+        const validGuess = wordlist.includes(word);
 
-        // Enter moves to next row
-        if (e.key === "Enter") {
-            const word = getRowWord(currentRow).toLowerCase();
-            const feedback = getRowFeedback(currentRow);
-            console.log(feedback)
-            if (feedback.reduce((partialSum, a) => partialSum + a, 0) === 0) {
-                celebrate()
-                gameOver = true
-            }
-            validGuess = wordlist.includes(word)
+        if (currentCol === maxCols && !feedback.includes(3) && validGuess) {
+            document.getElementById(`row-${currentRow}`).classList.add("locked");
+            animateRowPop(currentRow);
 
-            if (currentCol === maxCols && !(feedback.includes(3)) && validGuess) {
+            fetch("/submit", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ guess: word, feedback: feedback, previous: previousGuesses, wordlist: wordlist })
+            })
+            .then(res => res.json())
+            .then(data => {
+                const bestGuess = data.nextGuesses[0];
+                const mostInfo = data.nextGuesses[1];
+                document.getElementById("best-guess").textContent = bestGuess ? "Best guess: " + bestGuess : "This word is not in the wordlist :)";
+                document.getElementById("info-guess").textContent = mostInfo ? "Most info guess: " + mostInfo : "Most info guess: ↑";
+            });
 
-                document.getElementById(`row-${currentRow}`).classList.add("locked");
-                animateRowPop(currentRow);
-
-                // Send guess + feedback to Flask
-                fetch("/submit", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ guess: word, feedback: feedback, previous: previousGuesses, wordlist: wordlist})
-                })
-                .then(res => res.json())
-                .then(data => {
-                    bestGuess = data.nextGuesses[0]
-                    mostInfo = data.nextGuesses[1]
-                    if (bestGuess === '') {
-                        document.getElementById("best-guess").textContent = "This word is not in the wordlist :)" ;
-                        document.getElementById("info-guess").textContent = "Most info guess: " + '↑';
-                        gameOver = true;
-                    } else {
-                        document.getElementById("best-guess").textContent = "Best guess: " + bestGuess;
-                        if (mostInfo === '') {
-                            document.getElementById("info-guess").textContent = "Most info guess: " + '↑';
-                        } else {
-                            document.getElementById("info-guess").textContent = "Most info guess: " + mostInfo;
-                        }
-                    }
-                        
-                });
-
-                // Move to next row after delay (so animation can finish)
-                setTimeout(() => {
-                    currentRow = Math.min(currentRow + 1, maxRows);
-                    currentCol = 0;
-                }, maxCols * 120);
-                
-                previousGuesses.push([word, feedback])
-                currentRow = Math.min(currentRow, maxRows);
+            setTimeout(() => {
+                currentRow = Math.min(currentRow + 1, maxRows);
                 currentCol = 0;
-            }
-            else {
-                // ❌ not enough letters → shake current row
-                const row = document.getElementById(`row-${currentRow}`);
-                row.classList.add("shake");
+            }, maxCols * 120);
 
-                // remove class after animation so it can trigger again later
-                row.addEventListener("animationend", () => {
-                    row.classList.remove("shake");
-                }, { once: true });
+            previousGuesses.push([word, feedback]);
+            currentRow = Math.min(currentRow, maxRows);
+            currentCol = 0;
+        } else {
+            const row = document.getElementById(`row-${currentRow}`);
+            row.classList.add("shake");
+            row.addEventListener("animationend", () => row.classList.remove("shake"), { once: true });
 
-                if (currentCol !== maxCols) {
-                    showMessage("Not enough letters");
-                } 
-                else if (!validGuess) {
-                    showMessage("Not a valid word");
-                } 
-                else {
-                    showMessage("Click on the cells to enter the feedback")
-                }
-            }
+            if (currentCol !== maxCols) showMessage("Not enough letters");
+            else if (!validGuess) showMessage("Not a valid word");
+            else showMessage("Click on the cells to enter the feedback");
         }
-    });
+    }
+}
+
+// ----------------- Keyboard click binding -----------------
+document.querySelectorAll(".key").forEach(btn => {
+    btn.addEventListener("click", () => handleKey(btn.textContent));
+});
+
+// Keep physical keyboard working too
+document.addEventListener("keydown", (e) => {
+    if (e.key === "Backspace") handleKey("Del");
+    else if (e.key === "Enter") handleKey("Enter");
+    else handleKey(e.key);
+});
+
 
     // Attach click listeners after page loads
     document.querySelectorAll(".cell").forEach(cell => {
